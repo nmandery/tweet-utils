@@ -7,9 +7,8 @@ use clap::Parser;
 use geo_types::{Coordinate, LineString};
 use geojson::{Feature, FeatureCollection, GeoJson, Value};
 use serde_json::{to_value, Map};
-use std::cmp::Reverse;
 use std::collections::hash_map::Entry;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -38,11 +37,7 @@ fn main() -> eyre::Result<()> {
             let tweet: Tweet = match serde_json::from_str(&buf) {
                 Ok(tweet) => tweet,
                 Err(e) => {
-                    eprintln!(
-                        "failed to deserialize tweet - {}: {}",
-                        e.to_string(),
-                        buf.trim_end()
-                    );
+                    eprintln!("failed to deserialize tweet - {}: {}", e, buf.trim_end());
                     continue;
                 }
             };
@@ -54,16 +49,14 @@ fn main() -> eyre::Result<()> {
                 };
                 match trajectories.entry(tweet.user.id) {
                     Entry::Occupied(mut occ) => {
-                        occ.get_mut().points.push(Reverse(traj_point));
+                        occ.get_mut().points.push(traj_point);
                     }
                     Entry::Vacant(vac) => {
-                        let mut binheap = BinaryHeap::new();
-                        binheap.push(Reverse(traj_point));
                         vac.insert(UserTrajectory {
                             user_id: tweet.user.id,
                             user_name: tweet.user.name,
                             user_screen_name: tweet.user.screen_name,
-                            points: binheap,
+                            points: vec![traj_point],
                         });
                     }
                 }
@@ -73,6 +66,10 @@ fn main() -> eyre::Result<()> {
 
     // remove all with less than two points
     trajectories.retain(|_, v| v.points.len() >= 2);
+    // sort by time
+    trajectories
+        .iter_mut()
+        .for_each(|(_, v)| v.points.sort_unstable());
 
     save_geojson(trajectories)?;
     //println!("{}", serde_json::to_string(&trajectories)?);
@@ -82,12 +79,12 @@ fn main() -> eyre::Result<()> {
 
 fn save_geojson(trajectories: HashMap<u64, UserTrajectory>) -> eyre::Result<()> {
     let mut features = Vec::with_capacity(trajectories.len());
-    for (_, mut user_trajectory) in trajectories {
-        let mut coordinates: Vec<Coordinate<f64>> =
-            Vec::with_capacity(user_trajectory.points.len());
-        while let Some(tp) = user_trajectory.points.pop() {
-            coordinates.push(tp.0.into());
-        }
+    for (_, user_trajectory) in trajectories {
+        let coordinates: Vec<Coordinate<f64>> = user_trajectory
+            .points
+            .iter()
+            .map(|tp| tp.clone().into())
+            .collect();
         let linestring = LineString::from(coordinates);
 
         let mut props = Map::new();
@@ -116,6 +113,6 @@ fn save_geojson(trajectories: HashMap<u64, UserTrajectory>) -> eyre::Result<()> 
         foreign_members: None,
     });
 
-    println!("{}", gj.to_string());
+    println!("{}", gj);
     Ok(())
 }
