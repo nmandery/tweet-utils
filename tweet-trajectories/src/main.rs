@@ -82,12 +82,12 @@ fn main() -> eyre::Result<()> {
 
 fn save_geojson(trajectories: HashMap<u64, UserTrajectory>) -> eyre::Result<()> {
     let mut features = Vec::with_capacity(trajectories.len());
-    for (_, user_trajectory) in trajectories {
-        let coordinates: Vec<Coordinate<f64>> = user_trajectory
-            .points
-            .iter()
-            .map(|tp| tp.0.clone().into())
-            .collect();
+    for (_, mut user_trajectory) in trajectories {
+        let mut coordinates: Vec<Coordinate<f64>> =
+            Vec::with_capacity(user_trajectory.points.len());
+        while let Some(tp) = user_trajectory.points.pop() {
+            coordinates.push(tp.0.into());
+        }
         let linestring = LineString::from(coordinates);
 
         let mut props = Map::new();
