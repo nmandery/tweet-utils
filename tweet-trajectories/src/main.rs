@@ -72,7 +72,7 @@ fn main() -> eyre::Result<()> {
     }
 
     // remove all with less than two points
-    trajectories.retain(|_, v| v.points.len() >= 2 && v.points.len() < 15);
+    trajectories.retain(|_, v| v.points.len() >= 2);
 
     save_geojson(trajectories)?;
     //println!("{}", serde_json::to_string(&trajectories)?);
