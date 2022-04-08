@@ -1,8 +1,8 @@
+use crate::algo::PointInTime;
 use chrono::{DateTime, Utc};
 use geo_types::{Coordinate, Point};
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
-use std::cmp::Ordering;
 
 fn point_ser<S>(point: &Point<f64>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -21,23 +21,21 @@ pub struct TrajectoryPoint {
     pub timestamp: DateTime<Utc>,
 }
 
-impl Eq for TrajectoryPoint {}
-
-impl PartialOrd<Self> for TrajectoryPoint {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.timestamp.partial_cmp(&other.timestamp)
-    }
-}
-
-impl Ord for TrajectoryPoint {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.timestamp.cmp(&other.timestamp)
-    }
-}
-
 impl From<TrajectoryPoint> for Coordinate<f64> {
     fn from(tp: TrajectoryPoint) -> Self {
         tp.point.0
+    }
+}
+
+impl PointInTime for TrajectoryPoint {
+    #[inline]
+    fn timestamp(&self) -> DateTime<Utc> {
+        self.timestamp
+    }
+
+    #[inline]
+    fn point(&self) -> Point<f64> {
+        self.point
     }
 }
 
@@ -53,22 +51,36 @@ pub struct UserTrajectory {
 
 #[cfg(test)]
 mod tests {
-    use super::TrajectoryPoint;
-    use chrono::{DateTime, NaiveDateTime, Utc};
+    use geo_types::{coord, LineString};
 
     #[test]
-    fn trajectory_point_sort_chronological() {
-        let p1 = TrajectoryPoint {
-            point: Default::default(),
-            timestamp: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(10, 0), Utc),
-        };
-        let p2 = TrajectoryPoint {
-            point: Default::default(),
-            timestamp: DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(20, 0), Utc),
-        };
-        let mut v = vec![p2.clone(), p1.clone()];
-        v.sort_unstable();
-        assert_eq!(v[0], p1);
-        assert_eq!(v[1], p2);
+    fn angle() {
+        let ls: LineString<f64> = LineString::from(vec![
+            coord!(x: 10., y:10.),
+            coord!(x: 10., y:20.),
+            coord!(x: 13., y:22.),
+        ]);
+
+        let mut angles = Vec::with_capacity(ls.0.len());
+        for coord_window in ls.0.windows(3) {
+            // vectors in 2d space
+            let v2d_a = (
+                coord_window[0].x - coord_window[1].x,
+                coord_window[0].y - coord_window[1].y,
+            );
+            let v2d_b = (
+                coord_window[1].x - coord_window[2].x,
+                coord_window[1].y - coord_window[2].y,
+            );
+
+            let magnitude_a = (v2d_a.0.powi(2) + v2d_a.1.powi(2)).sqrt();
+            let magnitude_b = (v2d_b.0.powi(2) + v2d_b.1.powi(2)).sqrt();
+
+            let angle =
+                ((v2d_a.0 * v2d_b.0 + v2d_a.1 * v2d_b.1) / (magnitude_a * magnitude_b)).acos();
+
+            angles.push(angle.to_degrees())
+        }
+        dbg!(angles);
     }
 }

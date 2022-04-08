@@ -1,6 +1,9 @@
+mod algo;
 mod model;
 mod tweet;
 
+use crate::algo::SortChronologically;
+use crate::algo::Speed;
 use crate::model::{TrajectoryPoint, UserTrajectory};
 use crate::tweet::Tweet;
 use clap::Parser;
@@ -11,6 +14,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
+use uom::si::velocity::kilometer_per_hour;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -69,7 +73,7 @@ fn main() -> eyre::Result<()> {
     // sort by time
     trajectories
         .iter_mut()
-        .for_each(|(_, v)| v.points.sort_unstable());
+        .for_each(|(_, v)| v.points.sort_chronologically());
 
     save_geojson(trajectories)?;
     //println!("{}", serde_json::to_string(&trajectories)?);
@@ -88,6 +92,15 @@ fn save_geojson(trajectories: HashMap<u64, UserTrajectory>) -> eyre::Result<()> 
         let linestring = LineString::from(coordinates);
 
         let mut props = Map::new();
+        props.insert(
+            "max_speed_kmh".to_string(),
+            to_value(
+                user_trajectory
+                    .points
+                    .speed_max()
+                    .map(|v| v.get::<kilometer_per_hour>()),
+            )?,
+        );
         props.insert(
             "user_name".to_string(),
             to_value(user_trajectory.user_name)?,
