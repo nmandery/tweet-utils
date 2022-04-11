@@ -2,10 +2,12 @@ use chrono::{DateTime, Utc};
 use geo_types::Point;
 
 pub mod angle;
+pub mod curviness;
 pub mod speed;
 pub mod time;
 
 pub use angle::Angles;
+pub use curviness::Curviness;
 pub use speed::Speed;
 pub use time::SortChronologically;
 
