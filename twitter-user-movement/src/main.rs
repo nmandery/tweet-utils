@@ -6,9 +6,10 @@ use crate::algo::SortChronologically;
 use crate::algo::Speed;
 use crate::model::{MovementPoint, UserMovement};
 use crate::tweet::Tweet;
-use clap::Parser;
+use clap::{Args, Parser, Subcommand};
 use geo_types::{Coordinate, LineString};
 use geojson::{Feature, FeatureCollection, GeoJson, Value};
+use serde::Deserialize;
 use serde_json::{to_value, Map};
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -18,28 +19,61 @@ use uom::si::velocity::kilometer_per_hour;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
-struct Args {
+struct Cli {
+    #[clap(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    /// Convert JSONL-files containing tweets to a custom JSON file containing the movements for each user.
+    ///
+    /// The JSON will be written to stdout
+    ToMovementJson(FileList),
+    /// Convert JSONL-files containing tweets to a GeoJSON FeatureCollection containing a LineString for each user.
+    ///
+    /// The JSON will be written to stdout
+    ToGeoJson(FileList),
+}
+
+#[derive(Args, Debug)]
+struct FileList {
     /// JSONL files containing tweets
     jsonl_files: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Config {
+    /// screen names of users to use for the positive selection
+    positive_user_screen_names: Vec<String>,
+
+    /// screen names of users to use for the positive selection
+    negative_user_screen_names: Vec<String>,
 }
 
 type Movements = HashMap<u64, UserMovement>;
 
 fn main() -> eyre::Result<()> {
-    let args = Args::parse();
-    let movements = parse_movements(&args)?;
+    let args = Cli::parse();
 
-    save_geojson(movements)?;
-    //println!("{}", serde_json::to_string(&movements)?);
-
+    match &args.command {
+        Command::ToGeoJson(file_list) => {
+            let movements = parse_movements(file_list)?;
+            save_geojson(movements)?;
+        }
+        Command::ToMovementJson(file_list) => {
+            let movements = parse_movements(file_list)?;
+            println!("{}", serde_json::to_string(&movements)?);
+        }
+    }
     Ok(())
 }
 
-fn parse_movements(args: &Args) -> eyre::Result<Movements> {
+fn parse_movements(file_list: &FileList) -> eyre::Result<Movements> {
     let mut movements = Movements::new();
 
     let mut buf = String::new();
-    for jsonl_filename in args.jsonl_files.iter() {
+    for jsonl_filename in file_list.jsonl_files.iter() {
         let mut bufreader = BufReader::new(File::open(jsonl_filename)?);
         loop {
             buf.clear();
