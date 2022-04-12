@@ -21,9 +21,9 @@ impl Tweet {
     pub fn geo_point(&self) -> eyre::Result<Option<Point<f64>>> {
         if let Some(gjg) = self.coordinates.as_ref() {
             Ok(Some(gjg.value.clone().try_into()?))
-        } else if let Some(place) = self.place.as_ref() {
-            let poly: Polygon<f64> = place.bounding_box.value.clone().try_into()?;
-            Ok(poly.centroid())
+        //    } else if let Some(place) = self.place.as_ref() {
+        //        let poly: Polygon<f64> = place.bounding_box.value.clone().try_into()?;
+        //        Ok(poly.centroid())
         } else {
             Ok(None)
         }

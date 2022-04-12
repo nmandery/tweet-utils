@@ -7,12 +7,14 @@ use crate::algo::Speed;
 use crate::model::{MovementPoint, UserMovement};
 use crate::tweet::Tweet;
 use clap::{Args, Parser, Subcommand};
+use eyre::Report;
 use geo_types::{Coordinate, LineString};
 use geojson::{Feature, FeatureCollection, GeoJson, Value};
+use lightgbm::{Booster, Dataset};
 use serde::Deserialize;
-use serde_json::{to_value, Map};
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use serde_json::{json, to_value, Map};
+use std::collections::hash_map::{Entry, RandomState};
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use uom::si::velocity::kilometer_per_hour;
@@ -34,6 +36,8 @@ enum Command {
     ///
     /// The JSON will be written to stdout
     ToGeoJson(FileList),
+
+    Train(TrainArgs),
 }
 
 #[derive(Args, Debug)]
@@ -42,8 +46,16 @@ struct FileList {
     jsonl_files: Vec<String>,
 }
 
+#[derive(Args, Debug)]
+struct TrainArgs {
+    training_config_file: String,
+
+    /// JSONL files containing tweets
+    jsonl_files: Vec<String>,
+}
+
 #[derive(Deserialize, Debug)]
-struct Config {
+struct TrainingConfig {
     /// screen names of users to use for the positive selection
     positive_user_screen_names: Vec<String>,
 
@@ -58,22 +70,29 @@ fn main() -> eyre::Result<()> {
 
     match &args.command {
         Command::ToGeoJson(file_list) => {
-            let movements = parse_movements(file_list)?;
+            let movements = parse_movements(&file_list.jsonl_files)?;
             save_geojson(movements)?;
         }
         Command::ToMovementJson(file_list) => {
-            let movements = parse_movements(file_list)?;
+            let movements = parse_movements(&file_list.jsonl_files)?;
             println!("{}", serde_json::to_string(&movements)?);
+        }
+        Command::Train(train_args) => {
+            let movements = parse_movements(&train_args.jsonl_files)?;
+            let training_config =
+                serde_json::from_reader(File::open(&train_args.training_config_file)?)?;
+            let booster = train(&movements, &training_config)?;
+            todo!("apply booster to data")
         }
     }
     Ok(())
 }
 
-fn parse_movements(file_list: &FileList) -> eyre::Result<Movements> {
+fn parse_movements(jsonl_files: &[String]) -> eyre::Result<Movements> {
     let mut movements = Movements::new();
 
     let mut buf = String::new();
-    for jsonl_filename in file_list.jsonl_files.iter() {
+    for jsonl_filename in jsonl_files.iter() {
         let mut bufreader = BufReader::new(File::open(jsonl_filename)?);
         loop {
             buf.clear();
@@ -180,4 +199,47 @@ fn save_geojson(user_movements: HashMap<u64, UserMovement>) -> eyre::Result<()> 
 
     println!("{}", gj);
     Ok(())
+}
+
+fn train(movements: &Movements, training_config: &TrainingConfig) -> eyre::Result<Booster> {
+    let positive_screen_name_set: HashSet<String, RandomState> =
+        HashSet::from_iter(training_config.positive_user_screen_names.iter().cloned());
+    let negative_screen_name_set: HashSet<String, RandomState> =
+        HashSet::from_iter(training_config.negative_user_screen_names.iter().cloned());
+
+    let mut n_positive = 0u64;
+    let mut n_negative = 0u64;
+    let mut training_data = vec![];
+    let mut labels = vec![];
+
+    for user_movement in movements.values() {
+        if positive_screen_name_set.contains(&user_movement.user_screen_name) {
+            training_data.push(user_movement.metrics().to_vec());
+            labels.push(1.0f32);
+            n_positive += 1;
+        } else if negative_screen_name_set.contains(&user_movement.user_screen_name) {
+            training_data.push(user_movement.metrics().to_vec());
+            labels.push(0.0f32);
+            n_negative += 1;
+        }
+    }
+    eprintln!(
+        "Found {} positive and {} negative labeled user movements",
+        n_positive, n_negative
+    );
+    if training_data.is_empty() {
+        return Err(Report::msg("found no training data"));
+    }
+    dbg!(&training_data);
+    let dataset = Dataset::from_mat(training_data, labels)?;
+    let params = json! {
+        {
+            "num_iterations": 100usize,
+            "objective": "binary",
+            "metric": "auc"
+        }
+    };
+    let booster = Booster::train(dataset, &params)?;
+
+    Ok(booster)
 }
