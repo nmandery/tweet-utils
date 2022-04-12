@@ -1,5 +1,5 @@
 [package]
-name = "tweet-trajectories"
+name = "twitter-user-movement"
 version = "0.1.0"
 edition = "2021"
 

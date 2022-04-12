@@ -1,2 +1,2 @@
 [workspace]
-members = ["tweet-trajectories"]
+members = ["twitter-user-movement"]

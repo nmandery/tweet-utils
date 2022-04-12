@@ -20,19 +20,19 @@ where
 }
 
 #[derive(PartialEq, Serialize, Clone, Debug)]
-pub struct TrajectoryPoint {
+pub struct MovementPoint {
     #[serde(serialize_with = "point_ser")]
     pub point: Point<f64>,
     pub timestamp: DateTime<Utc>,
 }
 
-impl From<TrajectoryPoint> for Coordinate<f64> {
-    fn from(tp: TrajectoryPoint) -> Self {
+impl From<MovementPoint> for Coordinate<f64> {
+    fn from(tp: MovementPoint) -> Self {
         tp.point.0
     }
 }
 
-impl PointInTime for TrajectoryPoint {
+impl PointInTime for MovementPoint {
     #[inline]
     fn timestamp(&self) -> DateTime<Utc> {
         self.timestamp
@@ -45,16 +45,16 @@ impl PointInTime for TrajectoryPoint {
 }
 
 #[derive(Serialize)]
-pub struct UserTrajectory {
+pub struct UserMovement {
     pub user_id: u64,
     pub user_name: String,
     pub user_screen_name: String,
 
     /// chronologically sorted points
-    pub points: Vec<TrajectoryPoint>,
+    pub points: Vec<MovementPoint>,
 }
 
-impl UserTrajectory {
+impl UserMovement {
     /// max speed
     ///
     /// expects the point to be sorted chronologically

@@ -4,7 +4,7 @@ mod tweet;
 
 use crate::algo::SortChronologically;
 use crate::algo::Speed;
-use crate::model::{TrajectoryPoint, UserTrajectory};
+use crate::model::{MovementPoint, UserMovement};
 use crate::tweet::Tweet;
 use clap::Parser;
 use geo_types::{Coordinate, LineString};
@@ -23,13 +23,23 @@ struct Args {
     jsonl_files: Vec<String>,
 }
 
+type Movements = HashMap<u64, UserMovement>;
+
 fn main() -> eyre::Result<()> {
     let args = Args::parse();
+    let movements = parse_movements(&args)?;
 
-    let mut trajectories: HashMap<u64, UserTrajectory> = HashMap::new();
+    save_geojson(movements)?;
+    //println!("{}", serde_json::to_string(&movements)?);
+
+    Ok(())
+}
+
+fn parse_movements(args: &Args) -> eyre::Result<Movements> {
+    let mut movements = Movements::new();
 
     let mut buf = String::new();
-    for jsonl_filename in args.jsonl_files {
+    for jsonl_filename in args.jsonl_files.iter() {
         let mut bufreader = BufReader::new(File::open(jsonl_filename)?);
         loop {
             buf.clear();
@@ -47,20 +57,20 @@ fn main() -> eyre::Result<()> {
             };
 
             if let Some(point) = tweet.geo_point()? {
-                let traj_point = TrajectoryPoint {
+                let movement_point = MovementPoint {
                     point,
                     timestamp: tweet.created_at,
                 };
-                match trajectories.entry(tweet.user.id) {
+                match movements.entry(tweet.user.id) {
                     Entry::Occupied(mut occ) => {
-                        occ.get_mut().points.push(traj_point);
+                        occ.get_mut().points.push(movement_point);
                     }
                     Entry::Vacant(vac) => {
-                        vac.insert(UserTrajectory {
+                        vac.insert(UserMovement {
                             user_id: tweet.user.id,
                             user_name: tweet.user.name,
                             user_screen_name: tweet.user.screen_name,
-                            points: vec![traj_point],
+                            points: vec![movement_point],
                         });
                     }
                 }
@@ -69,29 +79,26 @@ fn main() -> eyre::Result<()> {
     }
 
     // remove all with less than two points
-    trajectories.retain(|_, v| v.points.len() >= 2);
+    movements.retain(|_, v| v.points.len() >= 2);
+
     // sort by time
-    trajectories.iter_mut().for_each(|(_, v)| {
+    movements.iter_mut().for_each(|(_, v)| {
         v.points.sort_chronologically();
     });
-
-    save_geojson(trajectories)?;
-    //println!("{}", serde_json::to_string(&trajectories)?);
-
-    Ok(())
+    Ok(movements)
 }
 
-fn save_geojson(trajectories: HashMap<u64, UserTrajectory>) -> eyre::Result<()> {
-    let mut features = Vec::with_capacity(trajectories.len());
-    for (_, user_trajectory) in trajectories {
-        let coordinates: Vec<Coordinate<f64>> = user_trajectory
+fn save_geojson(user_movements: HashMap<u64, UserMovement>) -> eyre::Result<()> {
+    let mut features = Vec::with_capacity(user_movements.len());
+    for (_, user_movement) in user_movements {
+        let coordinates: Vec<Coordinate<f64>> = user_movement
             .points
             .iter()
             .map(|tp| tp.clone().into())
             .collect();
         let linestring = LineString::from(coordinates);
 
-        let metrics = user_trajectory.metrics();
+        let metrics = user_movement.metrics();
 
         let mut props = Map::new();
         props.insert("sp_pc_10".to_string(), to_value(metrics.speeds_kmh_pc_10)?);
@@ -109,20 +116,17 @@ fn save_geojson(trajectories: HashMap<u64, UserTrajectory>) -> eyre::Result<()> 
         props.insert(
             "max_speed_kmh".to_string(),
             to_value(
-                user_trajectory
+                user_movement
                     .points
                     .speed_max()
                     .map(|v| v.get::<kilometer_per_hour>()),
             )?,
         );
-        props.insert(
-            "user_name".to_string(),
-            to_value(user_trajectory.user_name)?,
-        );
-        props.insert("user_id".to_string(), to_value(user_trajectory.user_id)?);
+        props.insert("user_name".to_string(), to_value(user_movement.user_name)?);
+        props.insert("user_id".to_string(), to_value(user_movement.user_id)?);
         props.insert(
             "user_screen_name".to_string(),
-            to_value(user_trajectory.user_screen_name)?,
+            to_value(user_movement.user_screen_name)?,
         );
 
         features.push(Feature {
