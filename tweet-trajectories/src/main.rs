@@ -71,9 +71,9 @@ fn main() -> eyre::Result<()> {
     // remove all with less than two points
     trajectories.retain(|_, v| v.points.len() >= 2);
     // sort by time
-    trajectories
-        .iter_mut()
-        .for_each(|(_, v)| v.points.sort_chronologically());
+    trajectories.iter_mut().for_each(|(_, v)| {
+        v.points.sort_chronologically();
+    });
 
     save_geojson(trajectories)?;
     //println!("{}", serde_json::to_string(&trajectories)?);
@@ -91,7 +91,21 @@ fn save_geojson(trajectories: HashMap<u64, UserTrajectory>) -> eyre::Result<()> 
             .collect();
         let linestring = LineString::from(coordinates);
 
+        let metrics = user_trajectory.metrics();
+
         let mut props = Map::new();
+        props.insert("sp_pc_10".to_string(), to_value(metrics.speeds_kmh_pc_10)?);
+        props.insert("sp_pc_50".to_string(), to_value(metrics.speeds_kmh_pc_50)?);
+        props.insert("sp_pc_80".to_string(), to_value(metrics.speeds_kmh_pc_80)?);
+        props.insert(
+            "sp_pc_100".to_string(),
+            to_value(metrics.speeds_kmh_pc_100)?,
+        );
+        props.insert(
+            "straightness_median".to_string(),
+            to_value(metrics.straightness_median)?,
+        );
+
         props.insert(
             "max_speed_kmh".to_string(),
             to_value(

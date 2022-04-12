@@ -4,18 +4,19 @@ use geo_types::{Coordinate, Point};
 use uom::si::f64::Length;
 use uom::si::length::meter;
 
+/// curviness = angle(degrees) * length of the line segment in meters
 pub trait Curviness {
     fn curviness(&self) -> Vec<f64>;
 
     fn curviness_total(&self) -> f64 {
-        self.curviness().iter().sum()
+        let curviness = self.curviness();
+        curviness.iter().sum::<f64>() / (curviness.len() as f64)
     }
 }
 
 impl Curviness for [Coordinate<f64>] {
     fn curviness(&self) -> Vec<f64> {
         // TODO: making this an iterator
-        let length_total = geodesic_distance_covered(self);
 
         let mut curviness = Vec::with_capacity(self.len().saturating_sub(1));
         for window in self.windows(3) {
@@ -24,7 +25,7 @@ impl Curviness for [Coordinate<f64>] {
             // consequent, duplicate points will make the returned angle NaN.
             if !angle.is_nan() {
                 let length_window = geodesic_distance_covered(window);
-                curviness.push(length_window.get::<meter>() / length_total.get::<meter>() * angle);
+                curviness.push(angle.to_degrees() * length_window.get::<meter>());
             }
         }
         curviness

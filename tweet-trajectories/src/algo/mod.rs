@@ -4,6 +4,7 @@ use geo_types::Point;
 pub mod angle;
 pub mod curviness;
 pub mod speed;
+pub mod straightness;
 pub mod time;
 
 pub use angle::Angles;

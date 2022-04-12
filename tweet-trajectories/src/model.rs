@@ -1,8 +1,13 @@
+use crate::algo::straightness::StraightnessChunked;
 use crate::algo::PointInTime;
+use crate::Speed;
 use chrono::{DateTime, Utc};
 use geo_types::{Coordinate, Point};
 use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
+use statrs::statistics::{Data, OrderStatistics};
+use uom::si::f64::Velocity;
+use uom::si::velocity::kilometer_per_hour;
 
 fn point_ser<S>(point: &Point<f64>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -47,6 +52,61 @@ pub struct UserTrajectory {
 
     /// chronologically sorted points
     pub points: Vec<TrajectoryPoint>,
+}
+
+impl UserTrajectory {
+    /// max speed
+    ///
+    /// expects the point to be sorted chronologically
+    pub fn max_speed(&self) -> Option<Velocity> {
+        self.points.speed_max()
+    }
+
+    /// expects the point to be sorted chronologically
+    pub fn metrics(&self) -> Metrics {
+        let mut speeds_kmh_data = Data::new(
+            self.points
+                .speeds()
+                .iter()
+                .map(|s| s.get::<kilometer_per_hour>())
+                .filter(|s| !s.is_nan())
+                .collect::<Vec<_>>(),
+        );
+
+        let coords: Vec<_> = self.points.iter().map(|tp| tp.point.0).collect();
+
+        Metrics {
+            point_count: self.points.len(),
+            straightness_median: coords.straightness_chunked_median(10),
+            speeds_kmh_pc_10: speeds_kmh_data.percentile(10),
+            speeds_kmh_pc_50: speeds_kmh_data.percentile(50),
+            speeds_kmh_pc_80: speeds_kmh_data.percentile(80),
+            speeds_kmh_pc_100: speeds_kmh_data.percentile(100),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Metrics {
+    pub point_count: usize,
+    pub straightness_median: f64,
+    pub speeds_kmh_pc_10: f64,
+    pub speeds_kmh_pc_50: f64,
+    pub speeds_kmh_pc_80: f64,
+    pub speeds_kmh_pc_100: f64,
+}
+
+impl Metrics {
+    pub fn to_vec(&self) -> Vec<f64> {
+        vec![
+            self.point_count as f64,
+            self.straightness_median,
+            self.speeds_kmh_pc_10,
+            self.speeds_kmh_pc_50,
+            self.speeds_kmh_pc_80,
+            self.speeds_kmh_pc_100,
+        ]
+    }
 }
 
 #[cfg(test)]
