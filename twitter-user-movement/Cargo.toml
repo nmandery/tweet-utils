@@ -17,4 +17,3 @@ nalgebra = "0.30"
 num-traits = "0.2"
 uom = "0.32"
 statrs = "0.15"
-lightgbm = { git = "https://github.com/nmandery/lightgbm-rs.git", rev = "dd1a56a7bb44b110ce8effe7ce6ff75502dc8500" }
