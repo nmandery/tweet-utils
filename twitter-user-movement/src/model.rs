@@ -23,7 +23,13 @@ where
 pub struct MovementPoint {
     #[serde(serialize_with = "point_ser")]
     pub point: Point<f64>,
+    pub is_exact_location: bool,
     pub timestamp: DateTime<Utc>,
+
+    pub text: String,
+    pub in_reply_to_user_id: Option<u64>,
+    pub lang: Option<String>,
+    pub travel_speed_from_last_tweet_kmh: Option<f64>,
 }
 
 impl From<MovementPoint> for Coordinate<f64> {

@@ -10,20 +10,25 @@ mod datetime;
 pub struct Tweet {
     pub id: u64,
     pub user: User,
+    pub text: String,
+    pub in_reply_to_user_id: Option<u64>,
+    pub lang: Option<String>,
 
     #[serde(deserialize_with = "datefmt_de")]
     pub created_at: DateTime<Utc>,
     pub place: Option<Place>,
     pub coordinates: Option<geojson::Geometry>,
+
+    pub public_metrics: Option<PublicMetrics>,
 }
 
 impl Tweet {
-    pub fn geo_point(&self) -> eyre::Result<Option<Point<f64>>> {
+    pub fn geo_point(&self) -> eyre::Result<Option<(Point<f64>, bool)>> {
         if let Some(gjg) = self.coordinates.as_ref() {
-            Ok(Some(gjg.value.clone().try_into()?))
-        //    } else if let Some(place) = self.place.as_ref() {
-        //        let poly: Polygon<f64> = place.bounding_box.value.clone().try_into()?;
-        //        Ok(poly.centroid())
+            Ok(Some((gjg.value.clone().try_into()?, true)))
+        } else if let Some(place) = self.place.as_ref() {
+            let poly: Polygon<f64> = place.bounding_box.value.clone().try_into()?;
+            Ok(poly.centroid().map(|pt| (pt, false)))
         } else {
             Ok(None)
         }
@@ -40,6 +45,14 @@ pub struct User {
 #[derive(Deserialize)]
 pub struct Place {
     pub bounding_box: geojson::Geometry,
+}
+
+#[derive(Deserialize)]
+pub struct PublicMetrics {
+    pub retweet_count: i64,
+    pub reply_count: i64,
+    pub like_count: i64,
+    pub quote_count: i64,
 }
 
 #[cfg(test)]

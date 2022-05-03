@@ -2,18 +2,17 @@ mod algo;
 mod model;
 mod tweet;
 
+use crate::algo::speed::speed;
 use crate::algo::SortChronologically;
 use crate::algo::Speed;
 use crate::model::{MovementPoint, UserMovement};
 use crate::tweet::Tweet;
 use clap::{Args, Parser, Subcommand};
-use eyre::Report;
 use geo_types::{Coordinate, LineString};
 use geojson::{Feature, FeatureCollection, GeoJson, Value};
-use serde::Deserialize;
-use serde_json::{json, to_value, Map};
-use std::collections::hash_map::{Entry, RandomState};
-use std::collections::{HashMap, HashSet};
+use serde_json::{to_value, Map};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use uom::si::velocity::kilometer_per_hour;
@@ -55,7 +54,7 @@ fn main() -> eyre::Result<()> {
         }
         Command::ToMovementJson(file_list) => {
             let movements = parse_movements(&file_list.jsonl_files)?;
-            println!("{}", serde_json::to_string(&movements)?);
+            save_movements(movements)?;
         }
     }
     Ok(())
@@ -82,10 +81,15 @@ fn parse_movements(jsonl_files: &[String]) -> eyre::Result<Movements> {
                 }
             };
 
-            if let Some(point) = tweet.geo_point()? {
+            if let Some((point, is_exact_location)) = tweet.geo_point()? {
                 let movement_point = MovementPoint {
                     point,
+                    is_exact_location,
                     timestamp: tweet.created_at,
+                    text: tweet.text,
+                    in_reply_to_user_id: tweet.in_reply_to_user_id,
+                    lang: tweet.lang,
+                    travel_speed_from_last_tweet_kmh: None,
                 };
                 match movements.entry(tweet.user.id) {
                     Entry::Occupied(mut occ) => {
@@ -171,5 +175,18 @@ fn save_geojson(user_movements: HashMap<u64, UserMovement>) -> eyre::Result<()> 
     });
 
     println!("{}", gj);
+    Ok(())
+}
+
+fn save_movements(mut user_movements: HashMap<u64, UserMovement>) -> eyre::Result<()> {
+    // enrich with travel speeds first
+    for (_, user) in user_movements.iter_mut() {
+        for idx in 1..user.points.len() {
+            user.points[idx].travel_speed_from_last_tweet_kmh =
+                Some(speed(&user.points[idx - 1], &user.points[idx]).get::<kilometer_per_hour>());
+        }
+    }
+
+    println!("{}", serde_json::to_string(&user_movements)?);
     Ok(())
 }
